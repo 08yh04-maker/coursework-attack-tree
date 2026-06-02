@@ -2,32 +2,7 @@
 
 ## Общая архитектура
 
-```mermaid
-graph TB
-    subgraph "Пользователь"
-        UI[Веб-интерфейс]
-    end
-
-    subgraph "Бэкенд Python"
-        API[FastAPI]
-        ANALYZER[NetworkX Analyzer]
-        METRICS[Metrics Calculator]
-    end
-
-    subgraph "Go модуль"
-        GO_CALC[Risk Calculator]
-    end
-
-    subgraph "Хранилище"
-        JSON[(attack_trees.json)]
-    end
-
-    UI --> API
-    API --> ANALYZER
-    API --> GO_CALC
-    ANALYZER --> JSON
-    GO_CALC --> METRICS
-    METRICS --> API
+<img width="1702" height="166" alt="image" src="https://github.com/user-attachments/assets/c2b4dfa1-b164-4aaf-974d-a234458693bc" />
 
 Компоненты системы
 1. Python бэкенд (FastAPI)
