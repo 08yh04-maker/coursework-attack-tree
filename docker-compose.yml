@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  python-backend:
+    build: ./backend/python
+    ports:
+      - "8000:8000"
+    networks:
+      - attack-tree-network
+    restart: unless-stopped
+
+  go-backend:
+    build: ./backend/go
+    ports:
+      - "8081:8081"
+    networks:
+      - attack-tree-network
+    restart: unless-stopped
+
+  web-ui:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./backend/web:/usr/share/nginx/html:ro
+    networks:
+      - attack-tree-network
+    depends_on:
+      - python-backend
+      - go-backend
+    restart: unless-stopped
+
+networks:
+  attack-tree-network:
+    driver: bridge
