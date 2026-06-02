@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attack Tree Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1e1e2e;
+            color: #cdd6f4;
+        }
+        h1 {
+            text-align: center;
+            color: #89b4fa;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .panel {
+            background: #313244;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .input-panel {
+            flex: 1;
+            min-width: 300px;
+        }
+        .graph-panel {
+            flex: 2;
+            min-width: 500px;
+        }
+        .results-panel {
+            flex: 1;
+            min-width: 300px;
+        }
+        textarea {
+            width: 100%;
+            height: 400px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            background: #1e1e2e;
+            color: #cdd6f4;
+            border: 1px solid #45475a;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        button {
+            background: #89b4fa;
+            color: #1e1e2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            width: 100%;
+        }
+        button:hover {
+            background: #b4befe;
+        }
+        #graph-container {
+            width: 100%;
+            height: 500px;
+            background: #1e1e2e;
+            border: 1px solid #45475a;
+            border-radius: 5px;
+        }
+        .metric {
+            background: #45475a;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #a6e3a1;
+        }
+        .metric-label {
+            font-size: 14px;
+            color: #cdd6f4;
+        }
+        .critical-node {
+            background: #f38ba8;
+            color: #1e1e2e;
+            padding: 5px;
+            margin: 5px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        pre {
+            background: #1e1e2e;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        h3 {
+            margin-top: 0;
+            color: #89b4fa;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌲 Attack Tree Analyzer</h1>
+    <div class="container">
+        <div class="panel input-panel">
+            <h3>📝 Дерево атак (JSON)</h3>
+            <textarea id="tree-input" placeholder='Введите дерево атак в формате JSON...'>{
+  "name": "Атака на веб-приложение",
+  "root": {
+    "id": "root",
+    "name": "Компрометация сервера",
+    "node_type": "OR",
+    "children": [
+      {
+        "id": "sql",
+        "name": "SQL-инъекция",
+        "node_type": "LEAF",
+        "probability": 0.3,
+        "cost": 5000
+      },
+      {
+        "id": "xss",
+        "name": "XSS атака",
+        "node_type": "LEAF",
+        "probability": 0.4,
+        "cost": 3000
+      },
+      {
+        "id": "brute",
+        "name": "Подбор пароля",
+        "node_type": "AND",
+        "children": [
+          {
+            "id": "dict",
+            "name": "Словарная атака",
+            "node_type": "LEAF",
+            "probability": 0.5,
+            "cost": 1000
+          },
+          {
+            "id": "hydra",
+            "name": "Hydra утилита",
+            "node_type": "LEAF",
+            "probability": 0.6,
+            "cost": 2000
+          }
+        ]
+      }
+    ]
+  }
+}</textarea>
+            <button onclick="analyzeTree()">🔍 Анализировать</button>
+            <button onclick="loadExample()" style="background: #45475a; margin-top: 5px;">📂 Загрузить пример</button>
+        </div>
+        <div class="panel graph-panel">
+            <h3>📊 Визуализация графа атак</h3>
+            <div id="graph-container"></div>
+        </div>
+        <div class="panel results-panel">
+            <h3>📈 Результаты анализа</h3>
+            <div id="results">
+                <div class="metric">
+                    <div class="metric-label">🎯 Вероятность успеха</div>
+                    <div class="metric-value" id="probability">—</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">💰 Стоимость атаки</div>
+                    <div class="metric-value" id="cost">—</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label" id="critical-label">⚠️ Критические узлы</div>
+                    <div id="critical-nodes">—</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">🗺️ Пути атак</div>
+                    <pre id="paths">—</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cy = null;
+
+        function loadExample() {
+            const example = {
+                "name": "Атака на веб-приложение",
+                "root": {
+                    "id": "root",
+                    "name": "Компрометация сервера",
+                    "node_type": "OR",
+                    "children": [
+                        {
+                            "id": "sql",
+                            "name": "SQL-инъекция",
+                            "node_type": "LEAF",
+                            "probability": 0.3,
+                            "cost": 5000
+                        },
+                        {
+                            "id": "xss",
+                            "name": "XSS атака",
+                            "node_type": "LEAF",
+                            "probability": 0.4,
+                            "cost": 3000
+                        },
+                        {
+                            "id": "brute",
+                            "name": "Подбор пароля",
+                            "node_type": "AND",
+                            "children": [
+                                {
+                                    "id": "dict",
+                                    "name": "Словарная атака",
+                                    "node_type": "LEAF",
+                                    "probability": 0.5,
+                                    "cost": 1000
+                                },
+                                {
+                                    "id": "hydra",
+                                    "name": "Hydra утилита",
+                                    "node_type": "LEAF",
+                                    "probability": 0.6,
+                                    "cost": 2000
+                                }
+                            ]
+                        }
+                    ]
+                }
+            };
+            document.getElementById('tree-input').value = JSON.stringify(example, null, 2);
+            analyzeTree();
+        }
+
+        async function analyzeTree() {
+            try {
+                const input = document.getElementById('tree-input').value;
+                const tree = JSON.parse(input);
+
+                // Вызываем Python FastAPI (порт 8000)
+                let response = await fetch('http://localhost:8000/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(tree)
+                });
+
+                if (!response.ok) {
+                    // Пробуем Go сервер (порт 8081)
+                    response = await fetch('http://localhost:8081/analyze', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(tree)
+                    });
+                }
+
+                if (!response.ok) {
+                    throw new Error('Сервер не доступен');
+                }
+
+                const metrics = await response.json();
+
+                document.getElementById('probability').innerText = (metrics.total_probability * 100).toFixed(1) + '%';
+                document.getElementById('cost').innerText = metrics.total_cost.toLocaleString() + ' ₽';
+                
+                const criticalHtml = metrics.critical_nodes.map(n => `<span class="critical-node">${n}</span>`).join('');
+                document.getElementById('critical-nodes').innerHTML = criticalHtml || '—';
+                
+                const pathsHtml = metrics.attack_paths.map(path => path.join(' → ')).join('\n');
+                document.getElementById('paths').innerText = pathsHtml || '—';
+
+                // Визуализация графа
+                drawGraph(tree);
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('probability').innerText = 'Ошибка';
+                document.getElementById('cost').innerText = 'Сервер не запущен';
+                document.getElementById('critical-nodes').innerHTML = 'Запустите backend';
+                document.getElementById('paths').innerText = 'Запустите backend (python или go)';
+            }
+        }
+
+        function drawGraph(tree) {
+            if (cy) {
+                cy.destroy();
+            }
+
+            const elements = [];
+            const addNodes = (node, parentId = null) => {
+                const color = node.node_type === 'LEAF' ? '#a6e3a1' : (node.node_type === 'AND' ? '#f9e2af' : '#89b4fa');
+                elements.push({
+                    data: {
+                        id: node.id,
+                        label: `${node.name}\n${node.node_type}`,
+                        prob: node.probability ? `${(node.probability*100).toFixed(0)}%` : '',
+                        cost: node.cost ? `${node.cost}₽` : ''
+                    },
+                    style: {
+                        'background-color': color,
+                        'label': 'data(label)',
+                        'width': 120,
+                        'height': 60,
+                        'text-valign': 'center',
+                        'text-wrap': 'wrap',
+                        'font-size': '12px',
+                        'border-width': 2,
+                        'border-color': '#45475a'
+                    }
+                });
+
+                if (parentId) {
+                    elements.push({
+                        data: { id: `${parentId}->${node.id}`, source: parentId, target: node.id }
+                    });
+                }
+
+                if (node.children) {
+                    node.children.forEach(child => addNodes(child, node.id));
+                }
+            };
+
+            addNodes(tree.root);
+
+            cy = cytoscape({
+                container: document.getElementById('graph-container'),
+                elements: elements,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'background-color': 'data(color)',
+                            'label': 'data(label)',
+                            'text-valign': 'center',
+                            'text-wrap': 'wrap',
+                            'width': 120,
+                            'height': 60,
+                            'font-size': '12px',
+                            'color': '#1e1e2e',
+                            'border-width': 2,
+                            'border-color': '#45475a'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 2,
+                            'line-color': '#89b4fa',
+                            'target-arrow-color': '#89b4fa',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier'
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    spacingFactor: 1.5
+                }
+            });
+        }
+
+        // Загружаем пример при старте
+        setTimeout(loadExample, 500);
+    </script>
+</body>
+</html>
